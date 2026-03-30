@@ -1,7 +1,42 @@
+import baostock as bs
 import pandas as pd
 from backtesting import Backtest, Strategy
 from backtesting.lib import crossover
-from backtesting.test import GOOG
+
+# ============ 1. 获取A股数据 ============
+def get_a_stock_data(symbol="sh.600519", start="2020-01-01", end="2025-12-31"):
+    """
+    用 BaoStock 获取A股数据
+    注意代码格式：sh.600519（沪市）、sz.000001（深市）
+    """
+    bs.login()
+    rs = bs.query_history_k_data_plus(
+        symbol,
+        "date,open,high,low,close,volume",
+        start_date=start,
+        end_date=end,
+        frequency="d",
+        adjustflag="2"  # 前复权
+    )
+    data_list = []
+    while rs.next():
+        data_list.append(rs.get_row_data())
+    bs.logout()
+
+    df = pd.DataFrame(data_list, columns=rs.fields)
+    df = df.rename(columns={
+        "date": "Date",
+        "open": "Open",
+        "high": "High",
+        "low": "Low",
+        "close": "Close",
+        "volume": "Volume",
+    })
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df.set_index("Date")
+    for col in ["Open", "High", "Low", "Close", "Volume"]:
+        df[col] = pd.to_numeric(df[col])
+    return df
 
 # ============ 2. 定义策略 ============
 class DualMaCross(Strategy):
@@ -27,16 +62,18 @@ class DualMaCross(Strategy):
             self.position.close()
 
 # ============ 3. 执行回测 ============
-data = GOOG
+# 获取贵州茅台 2020-2025 数据
+data = get_a_stock_data("sh.600519", "2020-01-01", "2025-12-31")
 
 bt = Backtest(
     data,
     DualMaCross,
-    cash=100_000,
-    commission=0.002,
-    exclusive_orders=True,
+    cash=100_000,          # 初始资金 10万
+    commission=0.0003,     # A股佣金万三
+    exclusive_orders=True, # 新信号覆盖旧订单
 )
 
+# 运行回测
 stats = bt.run()
 
 STATS_NAMES = {
